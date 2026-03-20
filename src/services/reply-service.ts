@@ -1,0 +1,395 @@
+import type { OutboundReply, ChannelType, ChannelMeta } from '../types/index.js';
+import { createLogger } from '../logger/index.js';
+
+const logger = createLogger('reply-service');
+
+/**
+ * Reply sender interface
+ *
+ * This interface abstracts the actual sending mechanism.
+ * In production, this would be implemented by OpenClaw SDK.
+ */
+export interface ReplySender {
+  send(reply: OutboundReply): Promise<void>;
+}
+
+/**
+ * Standard reply messages
+ */
+export const ReplyMessages = {
+  REGISTRATION_REQUIRED:
+    'You are not registered yet. Please register your MOI account.\n\n' +
+    'Send a registration command in this format:\n' +
+    '/register {"accountId":"your_moi_id","publicKey":"your_public_key","signature":"your_signature","message":"register:channel_userid"}',
+
+  WORKFLOW_CONTINUE:
+    'Registered user detected. Workflow orchestration will continue.',
+
+  INTERNAL_ERROR:
+    'Sorry, something went wrong. Please try again later.',
+
+  REGISTRATION_SUCCESS:
+    'Registration successful. Your account is now linked.',
+
+  REGISTRATION_FAILED:
+    'Registration failed. Please check your payload and try again.',
+
+  ALREADY_REGISTERED:
+    'You are already registered.',
+
+  SESSION_ACTIVE:
+    'Permissions already available. Continuing.',
+
+  SESSION_CREATION_REQUIRED:
+    'Session approval required.',
+
+  SESSION_RESUMED:
+    'Session is active. Continuing workflow.',
+
+  SESSION_PENDING:
+    'Your session transaction is still pending.',
+
+  SESSION_FAILED:
+    'Session approval failed.',
+
+  UNKNOWN_INTENT:
+    'I could not understand your request. Please try again with a clearer message.',
+
+  RESUME_ERROR:
+    'Could not resume workflow.',
+} as const;
+
+/**
+ * ReplyService handles sending replies back to users
+ *
+ * This service:
+ * - Builds outbound reply objects
+ * - Delegates sending to the configured sender (OpenClaw)
+ * - Handles standard reply messages
+ */
+export class ReplyService {
+  constructor(private readonly sender: ReplySender) {}
+
+  /**
+   * Build an outbound reply
+   */
+  private buildReply(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    text: string,
+    replyToMessageId?: string
+  ): OutboundReply {
+    return {
+      channel,
+      channelMeta,
+      externalUserId,
+      text,
+      replyToMessageId,
+    };
+  }
+
+  /**
+   * Send a reply to the user
+   */
+  async sendReply(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    text: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const reply = this.buildReply(channel, channelMeta, externalUserId, text, replyToMessageId);
+
+    logger.debug('Sending reply', {
+      channel,
+      externalUserId,
+      textLength: text.length,
+      hasReplyTo: !!replyToMessageId,
+    });
+
+    try {
+      await this.sender.send(reply);
+
+      logger.info('Reply sent', {
+        channel,
+        externalUserId,
+      });
+    } catch (error) {
+      logger.error('Failed to send reply', error as Error, {
+        channel,
+        externalUserId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Send registration required message
+   */
+  async sendRegistrationRequired(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      ReplyMessages.REGISTRATION_REQUIRED,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send workflow continue message (placeholder for Phase 1)
+   */
+  async sendWorkflowContinue(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      ReplyMessages.WORKFLOW_CONTINUE,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send internal error message
+   */
+  async sendInternalError(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      ReplyMessages.INTERNAL_ERROR,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send registration success message
+   */
+  async sendRegistrationSuccess(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    moiAccountId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\nMOI Account: ${moiAccountId}`;
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      message,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send registration failed message
+   */
+  async sendRegistrationFailed(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    error?: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const message = error
+      ? `${ReplyMessages.REGISTRATION_FAILED}\n\nError: ${error}`
+      : ReplyMessages.REGISTRATION_FAILED;
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      message,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send already registered message
+   */
+  async sendAlreadyRegistered(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    moiAccountId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\nMOI Account: ${moiAccountId}`;
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      message,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send session active message
+   */
+  async sendSessionActive(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      ReplyMessages.SESSION_ACTIVE,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send session creation required message with signing instructions
+   */
+  async sendSessionCreationRequired(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    signingInstructions: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const message = `${ReplyMessages.SESSION_CREATION_REQUIRED}\n\n${signingInstructions}`;
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      message,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send session resumed message
+   */
+  async sendSessionResumed(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    customMessage: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      customMessage,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send session pending message
+   */
+  async sendSessionPending(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    customMessage: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      customMessage,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send session failed message
+   */
+  async sendSessionFailed(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    customMessage: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      customMessage,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send unknown intent message
+   */
+  async sendUnknownIntent(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      ReplyMessages.UNKNOWN_INTENT,
+      replyToMessageId
+    );
+  }
+
+  /**
+   * Send resume error message
+   */
+  async sendResumeError(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    error: string,
+    replyToMessageId?: string
+  ): Promise<void> {
+    const message = `${ReplyMessages.RESUME_ERROR}\n\nError: ${error}`;
+    await this.sendReply(
+      channel,
+      channelMeta,
+      externalUserId,
+      message,
+      replyToMessageId
+    );
+  }
+}
+
+/**
+ * Default sender that logs replies (for development/testing)
+ */
+export class LoggingReplySender implements ReplySender {
+  async send(reply: OutboundReply): Promise<void> {
+    logger.info('Would send reply (logging mode)', {
+      channel: reply.channel,
+      externalUserId: reply.externalUserId,
+      text: reply.text,
+    });
+  }
+}
+
+/**
+ * Factory function to create ReplyService with default logging sender
+ */
+export function createReplyService(sender?: ReplySender): ReplyService {
+  return new ReplyService(sender ?? new LoggingReplySender());
+}

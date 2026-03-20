@@ -1,0 +1,30 @@
+{
+  "id": "participant-orchestrator",
+  "name": "Participant Orchestrator",
+  "version": "0.1.0",
+  "description": "Orchestration layer for participant-centric food-ordering workflow",
+  "author": "",
+  "license": "MIT",
+  "main": "./dist/openclaw-integration.js",
+  "kind": "channel-extension",
+  "channels": ["telegram", "whatsapp"],
+  "capabilities": {
+    "inbound": true,
+    "outbound": true
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enableTelegram": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable Telegram channel processing"
+      },
+      "enableWhatsApp": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable WhatsApp channel processing"
+      }
+    }
+  }
+}
