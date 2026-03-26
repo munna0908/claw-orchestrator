@@ -338,10 +338,13 @@ export { createLogger, logger, type Logger } from './logger/index.js';
 export { type ParticipantMappingStore } from './services/participant-mapping-store.js';
 export { type ReplySender, ReplyMessages } from './services/reply-service.js';
 export { getInMemoryStore, resetInMemoryStore } from './stores/in-memory-store.js';
+export { HttpParticipantMappingStore } from './stores/http-participant-store.js';
 export {
   type RegistrationVerifier,
   MockRegistrationVerifier,
   createMockVerifier,
+  CryptoRegistrationVerifier,
+  createCryptoVerifier,
 } from './services/registration-verifier.js';
 export { RegistrationService, createRegistrationService } from './services/registration-service.js';
 export {

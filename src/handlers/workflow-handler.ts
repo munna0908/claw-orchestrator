@@ -33,6 +33,10 @@ export interface ExtendedMessageProcessingResult extends Omit<MessageProcessingR
   moiAccountId?: string | undefined;
   workflowId?: string | undefined;
   sessionId?: string | undefined;
+  /** InteractionObject to sign (present for session_creation_required) */
+  ixObject?: Record<string, unknown> | undefined;
+  /** Request ID for the prepare write (needed for submit after signing) */
+  requestId?: string | undefined;
 }
 
 /**
@@ -201,13 +205,6 @@ export class WorkflowHandler {
         };
 
       case 'session_creation_required':
-        await this.replyService.sendSessionCreationRequired(
-          message.channel,
-          message.channelMeta,
-          message.externalUserId,
-          orchestrationResult.signingInstructions ?? 'Please sign the session request in your wallet.',
-          message.messageId
-        );
         return {
           success: true,
           messageId: message.messageId,
@@ -215,6 +212,8 @@ export class WorkflowHandler {
           moiAccountId: registrationResult.moiAccountId,
           workflowId: orchestrationResult.workflowId,
           sessionId: orchestrationResult.sessionId,
+          ixObject: orchestrationResult.ixObject,
+          requestId: orchestrationResult.requestId,
         };
 
       case 'error':

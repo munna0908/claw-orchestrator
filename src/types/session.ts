@@ -55,6 +55,12 @@ export interface SessionOrchestrationResult {
   /** Signing instructions if session creation required */
   signingInstructions?: string | undefined;
 
+  /** The InteractionObject to sign (present when action === 'session_creation_required') */
+  ixObject?: Record<string, unknown> | undefined;
+
+  /** Request ID for the prepare write (needed for submit) */
+  requestId?: string | undefined;
+
   /** Error message if failed */
   error?: string | undefined;
 }

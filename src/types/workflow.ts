@@ -32,6 +32,8 @@ export type IntentType = (typeof IntentType)[keyof typeof IntentType];
 export const PermissionCategory = {
   FOOD: 'FOOD',
   HEALTH: 'HEALTH',
+  ADDRESS: 'ADDRESS',
+  PAYMENT: 'PAYMENT',
 } as const;
 
 export type PermissionCategory = (typeof PermissionCategory)[keyof typeof PermissionCategory];

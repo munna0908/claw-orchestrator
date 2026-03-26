@@ -3,6 +3,8 @@ import type {
   ValidateSessionResponse,
   PrepareWriteRequest,
   PrepareWriteResponse,
+  SubmitWriteRequest,
+  SubmitWriteResponse,
   WriteStatusResponse,
   IntelligenceClientConfig,
 } from '../types/intelligence.js';
@@ -33,6 +35,11 @@ export interface IntelligenceClient {
    * Prepare a write operation (e.g., create_session_request)
    */
   prepareWrite(request: PrepareWriteRequest): Promise<PrepareWriteResponse>;
+
+  /**
+   * Submit a signed write operation
+   */
+  submitWrite(request: SubmitWriteRequest): Promise<SubmitWriteResponse>;
 
   /**
    * Get the status of a write operation
@@ -128,13 +135,43 @@ export class HttpIntelligenceClient implements IntelligenceClient {
 
       logger.info('Write preparation result', {
         requestId: request.requestId,
-        success: result.success,
-        error: result.error,
+        status: result.status,
+        method: result.method,
       });
 
       return result;
     } catch (error) {
       logger.error('Failed to prepare write', error as Error, {
+        requestId: request.requestId,
+      });
+      throw error;
+    }
+  }
+
+  async submitWrite(request: SubmitWriteRequest): Promise<SubmitWriteResponse> {
+    logger.debug('Submitting write', {
+      requestId: request.requestId,
+      participantId: request.participantId,
+      action: request.action,
+    });
+
+    try {
+      const response = await this.fetch('/v1/writes/submit', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      });
+
+      const result = (await response.json()) as SubmitWriteResponse;
+
+      logger.info('Write submit result', {
+        requestId: request.requestId,
+        status: result.status,
+        txHash: result.txHash,
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to submit write', error as Error, {
         requestId: request.requestId,
       });
       throw error;
@@ -272,11 +309,25 @@ export class MockIntelligenceClient implements IntelligenceClient {
     });
 
     return {
-      success: true,
       requestId: request.requestId,
-      signablePayload: `mock_payload_${request.requestId}`,
+      status: 'ready_to_sign',
       summary: `Create session ${request.params.sessionId} for ${request.params.purpose}`,
+      method: 'CreateSessionRequest',
+      ixObject: { mock: true, requestId: request.requestId },
+      expiresAt: Math.floor(Date.now() / 1000) + 600,
     };
+  }
+
+  async submitWrite(request: SubmitWriteRequest): Promise<SubmitWriteResponse> {
+    await this.simulateDelay();
+
+    logger.debug('Mock write submit', {
+      requestId: request.requestId,
+      action: request.action,
+    });
+
+    const txHash = `mock_tx_${request.requestId}`;
+    return { requestId: request.requestId, status: 'submitted', txHash, message: 'Transaction submitted successfully' };
   }
 
   async getWriteStatus(txHash: string): Promise<WriteStatusResponse> {

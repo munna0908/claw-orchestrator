@@ -48,9 +48,6 @@ export interface PrepareWriteRequest {
   /** MOI participant ID */
   participantId: string;
 
-  /** Key ID for signing (default: 0) */
-  keyId: number;
-
   /** Action type */
   action: 'create_session_request';
 
@@ -71,11 +68,11 @@ export interface CreateSessionRequestParams {
   /** Purpose of the session */
   purpose: string;
 
-  /** Approved permission categories */
-  approvedCategories: string[];
+  /** Required permission categories (matches intelligence service schema) */
+  requiredCategories: string[];
 
-  /** Approved permission scopes */
-  approvedScopes: string[];
+  /** Required permission scopes (matches intelligence service schema) */
+  requiredScopes: string[];
 
   /** Requested number of uses */
   requestedUses: number;
@@ -88,20 +85,23 @@ export interface CreateSessionRequestParams {
  * Response from prepare write
  */
 export interface PrepareWriteResponse {
-  /** Whether preparation succeeded */
-  success: boolean;
-
   /** Request ID */
   requestId: string;
 
-  /** Signable payload (hash or structured data) */
-  signablePayload?: string | undefined;
+  /** Status — always 'ready_to_sign' on success (service throws on failure) */
+  status: 'ready_to_sign';
+
+  /** Contract method name */
+  method: string;
+
+  /** The InteractionObject to be signed by the participant's wallet */
+  ixObject: Record<string, unknown>;
 
   /** Human-readable summary */
-  summary?: string | undefined;
+  summary: string;
 
-  /** Error message if failed */
-  error?: string | undefined;
+  /** Unix timestamp when this prepare request expires */
+  expiresAt: number;
 }
 
 /**
@@ -134,6 +134,44 @@ export interface WriteStatusResponse {
 
   /** Timestamp of last update */
   updatedAt: number;
+}
+
+/**
+ * Request to submit a signed write operation
+ * POST /v1/writes/submit
+ */
+export interface SubmitWriteRequest {
+  /** Request ID from prepareWrite */
+  requestId: string;
+
+  /** MOI participant ID */
+  participantId: string;
+
+  /** Action type */
+  action: 'create_session_request';
+
+  /** Signed interaction object from wallet */
+  signedIx: {
+    ix_args: string;
+    signatures: string;
+  };
+}
+
+/**
+ * Response from submit write
+ */
+export interface SubmitWriteResponse {
+  /** Request ID */
+  requestId: string;
+
+  /** Status */
+  status: 'submitted' | 'failed';
+
+  /** Transaction hash (present when status === 'submitted') */
+  txHash?: string | undefined;
+
+  /** Human-readable message */
+  message: string;
 }
 
 /**

@@ -288,42 +288,22 @@ export class SessionOrchestrator {
       const prepareResult = await this.intelligenceClient.prepareWrite({
         requestId,
         participantId,
-        keyId: this.config.defaultKeyId,
         action: 'create_session_request',
         params: {
           sessionId: newSessionId,
           agentId: this.config.agentId,
           purpose: classification.intent,
-          approvedCategories: classification.requiredCategories,
-          approvedScopes: classification.requiredScopes,
+          requiredCategories: classification.requiredCategories,
+          requiredScopes: classification.requiredScopes,
           requestedUses: this.config.defaultRequestedUses,
           ttlSeconds: this.config.defaultTtlSeconds,
         },
       });
 
-      if (!prepareResult.success) {
-        logger.error('Failed to prepare session creation', undefined, {
-          workflowId,
-          error: prepareResult.error,
-        });
-
-        await this.workflowStore.update(workflowId, {
-          status: WorkflowStatus.FAILED,
-        });
-
-        return {
-          success: false,
-          action: 'error',
-          workflowId,
-          error: prepareResult.error ?? 'Failed to prepare session creation',
-        };
-      }
-
       // Update workflow with signing payload
       await this.workflowStore.update(workflowId, {
         status: WorkflowStatus.WAITING_FOR_SIGNATURE,
         signingPayload: {
-          signablePayload: prepareResult.signablePayload,
           summary: prepareResult.summary,
         },
       });
@@ -347,6 +327,8 @@ export class SessionOrchestrator {
         workflowId,
         sessionId: newSessionId,
         signingInstructions,
+        ixObject: prepareResult.ixObject,
+        requestId: prepareResult.requestId,
       };
     } catch (error) {
       logger.error('Error preparing session creation', error as Error, {

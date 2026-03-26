@@ -29,13 +29,13 @@ export const ReplyMessages = {
     'Sorry, something went wrong. Please try again later.',
 
   REGISTRATION_SUCCESS:
-    'Registration successful. Your account is now linked.',
+    '🎉 *You\'re all set!*\n\nYour MOI Wallet has been verified and linked to your assistant. Your identity is secured on the MOI network — only you control your data.\n\n💬 Now just say *"order food"* to get started!',
 
   REGISTRATION_FAILED:
     'Registration failed. Please check your payload and try again.',
 
   ALREADY_REGISTERED:
-    'You are already registered.',
+    '✅ *Welcome back!*\n\nYour wallet is already linked. Just say *"order food"* whenever you\'re ready.',
 
   SESSION_ACTIVE:
     'Permissions already available. Continuing.',
@@ -188,7 +188,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\nMOI Account: ${moiAccountId}`;
+    const message = ReplyMessages.REGISTRATION_SUCCESS;
     await this.sendReply(
       channel,
       channelMeta,
@@ -230,7 +230,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\nMOI Account: ${moiAccountId}`;
+    const message = ReplyMessages.ALREADY_REGISTERED;
     await this.sendReply(
       channel,
       channelMeta,

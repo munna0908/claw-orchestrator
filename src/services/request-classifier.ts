@@ -32,12 +32,12 @@ const FOOD_ORDERING_KEYWORDS = [
 /**
  * Scopes required for food ordering
  */
-const FOOD_ORDERING_SCOPES = ['preferences.food.read', 'health.read'];
+const FOOD_ORDERING_SCOPES = ['preferences.food.read', 'health.read', 'profile.address.read', 'finance.payment.read'];
 
 /**
  * Categories required for food ordering
  */
-const FOOD_ORDERING_CATEGORIES = [PermissionCategory.FOOD, PermissionCategory.HEALTH];
+const FOOD_ORDERING_CATEGORIES = [PermissionCategory.FOOD, PermissionCategory.HEALTH, PermissionCategory.ADDRESS, PermissionCategory.PAYMENT];
 
 /**
  * Request Classifier
