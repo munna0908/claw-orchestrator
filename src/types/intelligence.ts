@@ -38,24 +38,6 @@ export interface ValidateSessionResponse {
 }
 
 /**
- * Request to prepare a write operation
- * POST /v1/writes/prepare
- */
-export interface PrepareWriteRequest {
-  /** Unique request identifier */
-  requestId: string;
-
-  /** MOI participant ID */
-  participantId: string;
-
-  /** Action type */
-  action: 'create_session_request';
-
-  /** Action-specific parameters */
-  params: CreateSessionRequestParams;
-}
-
-/**
  * Parameters for create_session_request action
  */
 export interface CreateSessionRequestParams {
@@ -80,6 +62,40 @@ export interface CreateSessionRequestParams {
   /** Time to live in seconds */
   ttlSeconds: number;
 }
+
+/**
+ * Parameters for approve_session action
+ */
+export interface ApproveSessionParams {
+  /** Session ID to approve */
+  sessionId: string;
+
+  /** Unix timestamp when session was issued */
+  issuedAt: number;
+
+  /** Unix timestamp when session expires */
+  expiresAt: number;
+
+  /** Number of permitted uses */
+  remainingUses: number;
+}
+
+/**
+ * Parameters for revoke_session action
+ */
+export interface RevokeSessionParams {
+  /** Session ID to revoke */
+  sessionId: string;
+}
+
+/**
+ * Request to prepare a write operation
+ * POST /v1/writes/prepare
+ */
+export type PrepareWriteRequest =
+  | { requestId: string; participantId: string; action: 'create_session_request'; params: CreateSessionRequestParams }
+  | { requestId: string; participantId: string; action: 'approve_session'; params: ApproveSessionParams }
+  | { requestId: string; participantId: string; action: 'revoke_session'; params: RevokeSessionParams };
 
 /**
  * Response from prepare write
@@ -148,7 +164,7 @@ export interface SubmitWriteRequest {
   participantId: string;
 
   /** Action type */
-  action: 'create_session_request';
+  action: 'create_session_request' | 'revoke_session';
 
   /** Signed interaction object from wallet */
   signedIx: {

@@ -18,7 +18,14 @@
  * - Delivery Service: Order delivery coordination (future)
  */
 
-import type { InboundMessage, MockVerifierConfig, IntelligenceClientConfig } from './types/index.js';
+import type {
+  InboundMessage,
+  MockVerifierConfig,
+  IntelligenceClientConfig,
+  PrepareWriteResponse,
+  SubmitWriteRequest,
+  SubmitWriteResponse,
+} from './types/index.js';
 import type { ParticipantMappingStore } from './services/participant-mapping-store.js';
 import type { ReplySender } from './services/reply-service.js';
 import type { RegistrationVerifier } from './services/registration-verifier.js';
@@ -279,6 +286,45 @@ export class ParticipantOrchestratorPlugin {
   }
 
   /**
+   * Submit a signed write operation to the Intelligence Service.
+   * Channel adapters call this after the participant signs the ixObject in their wallet.
+   */
+  async submitWrite(request: SubmitWriteRequest): Promise<SubmitWriteResponse> {
+    if (!this.intelligenceClient) {
+      throw new Error('Session orchestration is not enabled');
+    }
+    return this.intelligenceClient.submitWrite(request);
+  }
+
+  /**
+   * Get the on-chain status of a submitted write transaction.
+   * Channel adapters use this to poll for confirmation after submitWrite.
+   */
+  async getWriteStatus(txHash: string): Promise<import('./types/intelligence.js').WriteStatusResponse> {
+    if (!this.intelligenceClient) {
+      throw new Error('Session orchestration is not enabled');
+    }
+    return this.intelligenceClient.getWriteStatus(txHash);
+  }
+
+  /**
+   * Prepare a revoke_session interaction for the participant to sign.
+   * Returns the ixObject that the channel adapter must send to the wallet for signing.
+   */
+  async prepareRevoke(participantId: string, sessionId: string): Promise<PrepareWriteResponse> {
+    if (!this.intelligenceClient) {
+      throw new Error('Session orchestration is not enabled');
+    }
+    const requestId = `req_revoke_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    return this.intelligenceClient.prepareWrite({
+      requestId,
+      participantId,
+      action: 'revoke_session',
+      params: { sessionId },
+    });
+  }
+
+  /**
    * Health check endpoint
    */
   async healthCheck(): Promise<{ status: 'ok' | 'error'; details?: Record<string, unknown> }> {
@@ -354,6 +400,7 @@ export {
   REGISTRATION_COMMAND,
 } from './services/registration-parser.js';
 export type { ExtendedMessageProcessingResult } from './handlers/workflow-handler.js';
+export type { PrepareWriteResponse, SubmitWriteRequest, SubmitWriteResponse, WriteStatusResponse } from './types/intelligence.js';
 
 // Session orchestration exports
 export {

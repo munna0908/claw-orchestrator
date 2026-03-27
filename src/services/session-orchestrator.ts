@@ -284,7 +284,7 @@ export class SessionOrchestrator {
     });
 
     try {
-      // Call Intelligence Service to prepare the write
+      // Step 1: Prepare create_session_request
       const prepareResult = await this.intelligenceClient.prepareWrite({
         requestId,
         participantId,
@@ -299,6 +299,52 @@ export class SessionOrchestrator {
           ttlSeconds: this.config.defaultTtlSeconds,
         },
       });
+
+      // Step 2: Prepare approve_session and merge into one interaction so the
+      // participant signs once and the session is immediately ACTIVE on-chain.
+      let mergedIxObject: Record<string, unknown> = {
+        ...prepareResult.ixObject,
+        sender: {
+          ...((prepareResult.ixObject['sender'] as Record<string, unknown>) ?? {}),
+          id: participantId,
+        },
+      };
+
+      try {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const approveResult = await this.intelligenceClient.prepareWrite({
+          requestId: `req_approve_${Date.now()}`,
+          participantId,
+          action: 'approve_session',
+          params: {
+            sessionId: newSessionId,
+            issuedAt: currentTime,
+            expiresAt: currentTime + this.config.defaultTtlSeconds,
+            remainingUses: this.config.defaultRequestedUses,
+          },
+        });
+
+        mergedIxObject = {
+          ...mergedIxObject,
+          fuel_limit:
+            ((prepareResult.ixObject['fuel_limit'] as number) ?? 5000) +
+            ((approveResult.ixObject['fuel_limit'] as number) ?? 5000),
+          ix_operations: [
+            ...((prepareResult.ixObject['ix_operations'] as unknown[]) ?? []),
+            ...((approveResult.ixObject['ix_operations'] as unknown[]) ?? []),
+          ],
+        };
+
+        logger.info('Merged create_session_request + approve_session into one interaction', {
+          workflowId,
+          newSessionId,
+        });
+      } catch (approveErr) {
+        logger.warn('Failed to prepare approve_session — signing create_session_request only', {
+          workflowId,
+          error: (approveErr as Error).message,
+        });
+      }
 
       // Update workflow with signing payload
       await this.workflowStore.update(workflowId, {
@@ -327,7 +373,7 @@ export class SessionOrchestrator {
         workflowId,
         sessionId: newSessionId,
         signingInstructions,
-        ixObject: prepareResult.ixObject,
+        ixObject: mergedIxObject,
         requestId: prepareResult.requestId,
       };
     } catch (error) {

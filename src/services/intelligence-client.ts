@@ -255,7 +255,7 @@ export interface MockIntelligenceClientConfig {
 
 export class MockIntelligenceClient implements IntelligenceClient {
   private readonly config: MockIntelligenceClientConfig;
-  private preparedWrites: Map<string, PrepareWriteRequest> = new Map();
+  private preparedWrites: Map<string, PrepareWriteRequest> = new Map<string, PrepareWriteRequest>();
 
   constructor(config: MockIntelligenceClientConfig = {}) {
     this.config = {
@@ -308,12 +308,25 @@ export class MockIntelligenceClient implements IntelligenceClient {
       action: request.action,
     });
 
+    let summary: string;
+    let method: string;
+    if (request.action === 'create_session_request') {
+      summary = `Create session ${request.params.sessionId} for ${request.params.purpose}`;
+      method = 'CreateSessionRequest';
+    } else if (request.action === 'approve_session') {
+      summary = `Approve session ${request.params.sessionId}`;
+      method = 'ApproveSession';
+    } else {
+      summary = `Revoke session ${request.params.sessionId}`;
+      method = 'RevokeSession';
+    }
+
     return {
       requestId: request.requestId,
       status: 'ready_to_sign',
-      summary: `Create session ${request.params.sessionId} for ${request.params.purpose}`,
-      method: 'CreateSessionRequest',
-      ixObject: { mock: true, requestId: request.requestId },
+      summary,
+      method,
+      ixObject: { mock: true, requestId: request.requestId, action: request.action },
       expiresAt: Math.floor(Date.now() / 1000) + 600,
     };
   }
