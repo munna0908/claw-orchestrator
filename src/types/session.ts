@@ -44,6 +44,7 @@ export interface SessionOrchestrationResult {
     | 'session_found'
     | 'session_creation_required'
     | 'waiting_for_signature'
+    | 'category_cids_missing'
     | 'error';
 
   /** Workflow ID */
@@ -60,6 +61,9 @@ export interface SessionOrchestrationResult {
 
   /** Request ID for the prepare write (needed for submit) */
   requestId?: string | undefined;
+
+  /** Categories missing CIDs in the contract (present when action === 'category_cids_missing') */
+  missingCategories?: string[] | undefined;
 
   /** Error message if failed */
   error?: string | undefined;

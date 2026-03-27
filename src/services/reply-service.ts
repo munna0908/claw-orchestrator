@@ -57,6 +57,7 @@ export const ReplyMessages = {
 
   RESUME_ERROR:
     'Could not resume workflow.',
+
 } as const;
 
 /**
@@ -351,6 +352,33 @@ export class ReplyService {
       ReplyMessages.UNKNOWN_INTENT,
       replyToMessageId
     );
+  }
+
+  /**
+   * Send category CIDs missing message
+   */
+  async sendCategoryCidsMissing(
+    channel: ChannelType,
+    channelMeta: ChannelMeta,
+    externalUserId: string,
+    missingCategories: string[],
+    replyToMessageId?: string
+  ): Promise<void> {
+    const friendlyNames: Record<string, string> = {
+      FOOD: 'food preferences',
+      HEALTH: 'health information',
+      ADDRESS: 'delivery address',
+      PAYMENT: 'payment details',
+    };
+    const categoryList = missingCategories
+      .map((c) => `• ${friendlyNames[c] ?? c.toLowerCase()}`)
+      .join('\n');
+    const message =
+      `It looks like your profile isn't fully set up yet.\n\n` +
+      `To process your request, I need access to the following, but they haven't been added to your MOI account:\n\n` +
+      `${categoryList}\n\n` +
+      `Head over to your MOI account and add this information — once it's in place, just come back and try again. I'll be ready! 🙂`;
+    await this.sendReply(channel, channelMeta, externalUserId, message, replyToMessageId);
   }
 
   /**

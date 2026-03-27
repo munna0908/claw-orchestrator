@@ -191,6 +191,37 @@ export interface SubmitWriteResponse {
 }
 
 /**
+ * Individual category reference (IPFS CID + metadata)
+ */
+export interface CategoryRef {
+  /** IPFS CID for the category data */
+  ref: string;
+  schemaVersion: string;
+  updatedAt: number;
+}
+
+/**
+ * Request to fetch category CID references
+ * POST /v1/categories/get
+ */
+export interface GetCategoryRefsRequest {
+  /** MOI participant ID */
+  participantId: string;
+
+  /** Categories to fetch refs for */
+  categories: string[];
+}
+
+/**
+ * Response from category refs fetch
+ */
+export interface GetCategoryRefsResponse {
+  participantId: string;
+  /** Map of category → CategoryRef (only present categories are included) */
+  categoryRefs: Partial<Record<string, CategoryRef>>;
+}
+
+/**
  * Intelligence Service client configuration
  */
 export interface IntelligenceClientConfig {

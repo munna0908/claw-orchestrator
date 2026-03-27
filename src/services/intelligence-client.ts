@@ -7,6 +7,8 @@ import type {
   SubmitWriteResponse,
   WriteStatusResponse,
   IntelligenceClientConfig,
+  GetCategoryRefsRequest,
+  GetCategoryRefsResponse,
 } from '../types/intelligence.js';
 import { createLogger } from '../logger/index.js';
 
@@ -45,6 +47,15 @@ export interface IntelligenceClient {
    * Get the status of a write operation
    */
   getWriteStatus(txHash: string): Promise<WriteStatusResponse>;
+
+  /**
+   * Fetch category CID references for a participant from the contract
+   * Used to check if required categories have CIDs set before creating a session request
+   */
+  getCategoryRefs(
+    participantId: string,
+    categories: string[]
+  ): Promise<GetCategoryRefsResponse>;
 }
 
 /**
@@ -196,6 +207,34 @@ export class HttpIntelligenceClient implements IntelligenceClient {
       return result;
     } catch (error) {
       logger.error('Failed to get write status', error as Error, { txHash });
+      throw error;
+    }
+  }
+
+  async getCategoryRefs(
+    participantId: string,
+    categories: string[]
+  ): Promise<GetCategoryRefsResponse> {
+    const request: GetCategoryRefsRequest = { participantId, categories };
+
+    logger.debug('Fetching category refs', { participantId, categories });
+
+    try {
+      const response = await this.fetch('/v1/categories/get', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      });
+
+      const result = (await response.json()) as GetCategoryRefsResponse;
+
+      logger.info('Category refs fetched', {
+        participantId,
+        foundCategories: Object.keys(result.categoryRefs ?? {}),
+      });
+
+      return result;
+    } catch (error) {
+      logger.error('Failed to fetch category refs', error as Error, { participantId });
       throw error;
     }
   }
@@ -367,6 +406,25 @@ export class MockIntelligenceClient implements IntelligenceClient {
       status: 'pending',
       updatedAt: Math.floor(Date.now() / 1000),
     };
+  }
+
+  async getCategoryRefs(
+    participantId: string,
+    categories: string[]
+  ): Promise<GetCategoryRefsResponse> {
+    await this.simulateDelay();
+
+    // Mock: return all categories as having CIDs set by default
+    const categoryRefs: Partial<Record<string, { ref: string; schemaVersion: string; updatedAt: number }>> = {};
+    for (const category of categories) {
+      categoryRefs[category] = {
+        ref: `mock_cid_${category.toLowerCase()}`,
+        schemaVersion: '1.0',
+        updatedAt: Math.floor(Date.now() / 1000),
+      };
+    }
+
+    return { participantId, categoryRefs };
   }
 
   /**

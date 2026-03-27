@@ -25,6 +25,7 @@ export type ExtendedMessageAction =
   | 'session_resumed'
   | 'session_pending'
   | 'session_failed'
+  | 'category_cids_missing'
   | 'unknown_intent'
   | 'error';
 
@@ -37,6 +38,8 @@ export interface ExtendedMessageProcessingResult extends Omit<MessageProcessingR
   ixObject?: Record<string, unknown> | undefined;
   /** Request ID for the prepare write (needed for submit after signing) */
   requestId?: string | undefined;
+  /** Categories missing CIDs in the contract (present when action === 'category_cids_missing') */
+  missingCategories?: string[] | undefined;
 }
 
 /**
@@ -214,6 +217,23 @@ export class WorkflowHandler {
           sessionId: orchestrationResult.sessionId,
           ixObject: orchestrationResult.ixObject,
           requestId: orchestrationResult.requestId,
+        };
+
+      case 'category_cids_missing':
+        await this.replyService.sendCategoryCidsMissing(
+          message.channel,
+          message.channelMeta,
+          message.externalUserId,
+          orchestrationResult.missingCategories ?? [],
+          message.messageId
+        );
+        return {
+          success: false,
+          messageId: message.messageId,
+          action: 'category_cids_missing',
+          moiAccountId: registrationResult.moiAccountId,
+          workflowId: orchestrationResult.workflowId,
+          missingCategories: orchestrationResult.missingCategories,
         };
 
       case 'error':

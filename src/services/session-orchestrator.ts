@@ -137,7 +137,7 @@ export class SessionOrchestrator {
         workflowId: workflow.workflowId,
       });
 
-      return this.createSessionRequest(
+      return this.createSessionRequestWithCidCheck(
         workflow.workflowId,
         workflow.requestId,
         participantId,
@@ -186,7 +186,7 @@ export class SessionOrchestrator {
       invalidReasons: selectionResult.invalidReasons,
     });
 
-    return this.createSessionRequest(
+    return this.createSessionRequestWithCidCheck(
       workflow.workflowId,
       workflow.requestId,
       participantId,
@@ -256,6 +256,60 @@ export class SessionOrchestrator {
       checkedSessionIds,
       invalidReasons,
     };
+  }
+
+  /**
+   * Check category CIDs then create a session request.
+   * If any required categories are missing CIDs in the contract, returns
+   * a category_cids_missing result instead of proceeding.
+   */
+  private async createSessionRequestWithCidCheck(
+    workflowId: string,
+    requestId: string,
+    participantId: string,
+    classification: ClassificationResult
+  ): Promise<SessionOrchestrationResult> {
+    const requiredCategories = classification.requiredCategories;
+
+    if (requiredCategories.length > 0) {
+      try {
+        const categoryRefsResult = await this.intelligenceClient.getCategoryRefs(
+          participantId,
+          requiredCategories
+        );
+
+        const missingCategories = requiredCategories.filter(
+          (cat) => !categoryRefsResult.categoryRefs[cat]?.ref
+        );
+
+        if (missingCategories.length > 0) {
+          logger.warn('Participant is missing category CIDs in contract', {
+            workflowId,
+            participantId,
+            missingCategories,
+          });
+
+          await this.workflowStore.update(workflowId, {
+            status: WorkflowStatus.FAILED,
+          });
+
+          return {
+            success: false,
+            action: 'category_cids_missing',
+            workflowId,
+            missingCategories,
+          };
+        }
+      } catch (error) {
+        logger.warn('Failed to check category CIDs, proceeding to session creation', {
+          workflowId,
+          error: (error as Error).message,
+        });
+        // Non-fatal: if the check fails (e.g. network error), proceed normally
+      }
+    }
+
+    return this.createSessionRequest(workflowId, requestId, participantId, classification);
   }
 
   /**
