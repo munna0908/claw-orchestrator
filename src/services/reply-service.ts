@@ -37,9 +37,6 @@ export const ReplyMessages = {
   ALREADY_REGISTERED:
     '✅ *Welcome back!*\n\nYour wallet is already linked. Just say *"order food"* whenever you\'re ready.',
 
-  SESSION_ACTIVE:
-    'Permissions already available. Continuing.',
-
   SESSION_CREATION_REQUIRED:
     'Session approval required.',
 
@@ -189,7 +186,8 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const message = ReplyMessages.REGISTRATION_SUCCESS;
+    const trustClawId = moiAccountId.slice(0, 6) + '...' + moiAccountId.slice(-4);
+    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
     await this.sendReply(
       channel,
       channelMeta,
@@ -231,7 +229,8 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const message = ReplyMessages.ALREADY_REGISTERED;
+    const trustClawId = moiAccountId.slice(0, 6) + '...' + moiAccountId.slice(-4);
+    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
     await this.sendReply(
       channel,
       channelMeta,
@@ -248,13 +247,31 @@ export class ReplyService {
     channel: ChannelType,
     channelMeta: ChannelMeta,
     externalUserId: string,
+    sessionId: string,
     replyToMessageId?: string
   ): Promise<void> {
+    const message =
+      `🔍 Found an active session\n\n` +
+      `Looks like you've already approved access for this.\n\n` +
+      `Session ID: ${sessionId}\n\n` +
+      `I can ask questions using these permissions:\n` +
+      `• 🍽 Food Preferences\n` +
+      `• 🏥 Health Profile\n` +
+      `• 📍 Delivery Address\n` +
+      `• 💳 Payment\n\n` +
+      `━━━━━━━━━━━━━━━\n\n` +
+      `No need to ask you again — I'll reuse this session.\n\n` +
+      `Still:\n` +
+      `• scoped to these permissions\n` +
+      `• time-limited\n` +
+      `• fully revocable\n\n` +
+      `━━━━━━━━━━━━━━━\n\n` +
+      `Continuing with your request 🚀`;
     await this.sendReply(
       channel,
       channelMeta,
       externalUserId,
-      ReplyMessages.SESSION_ACTIVE,
+      message,
       replyToMessageId
     );
   }

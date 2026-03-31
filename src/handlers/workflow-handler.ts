@@ -196,6 +196,7 @@ export class WorkflowHandler {
           message.channel,
           message.channelMeta,
           message.externalUserId,
+          orchestrationResult.sessionId ?? '',
           message.messageId
         );
         return {
