@@ -263,6 +263,18 @@ export class HttpIntelligenceClient implements IntelligenceClient {
       });
 
       if (!response.ok) {
+        let body: string;
+        try {
+          body = await response.text();
+        } catch {
+          body = '<unreadable>';
+        }
+        logger.error('HTTP error response', undefined, {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          body,
+        });
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 

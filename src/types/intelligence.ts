@@ -198,6 +198,7 @@ export interface CategoryRef {
   ref: string;
   schemaVersion: string;
   updatedAt: number;
+  updatedBy: string;
 }
 
 /**
