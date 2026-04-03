@@ -427,12 +427,13 @@ export class MockIntelligenceClient implements IntelligenceClient {
     await this.simulateDelay();
 
     // Mock: return all categories as having CIDs set by default
-    const categoryRefs: Partial<Record<string, { ref: string; schemaVersion: string; updatedAt: number }>> = {};
+    const categoryRefs: Partial<Record<string, { ref: string; schemaVersion: string; updatedAt: number, updatedBy: string }>> = {};
     for (const category of categories) {
       categoryRefs[category] = {
         ref: `mock_cid_${category.toLowerCase()}`,
         schemaVersion: '1.0',
         updatedAt: Math.floor(Date.now() / 1000),
+        updatedBy: "external_app"
       };
     }
 
