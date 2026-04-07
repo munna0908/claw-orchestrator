@@ -58,6 +58,18 @@ export const ReplyMessages = {
 } as const;
 
 /**
+ * Truncate a MOI account ID to show only significant hex digits,
+ * skipping leading/trailing zeros: e.g. 0x1a2b...3c4d
+ */
+function truncateMoiId(moiAccountId: string): string {
+  const hex = moiAccountId.startsWith('0x') ? moiAccountId.slice(2) : moiAccountId;
+  const firstNonZero = hex.search(/[^0]/);
+  const lastNonZero = hex.length - 1 - [...hex].reverse().join('').search(/[^0]/);
+  const significant = firstNonZero === -1 ? '0000' : hex.slice(firstNonZero, lastNonZero + 1);
+  return `0x${significant.slice(0, 4)}...${significant.slice(-4)}`;
+}
+
+/**
  * ReplyService handles sending replies back to users
  *
  * This service:
@@ -186,7 +198,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const trustClawId = moiAccountId.slice(0, 6) + '...' + moiAccountId.slice(-4);
+    const trustClawId = truncateMoiId(moiAccountId);
     const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
     await this.sendReply(
       channel,
@@ -229,7 +241,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const trustClawId = moiAccountId.slice(0, 6) + '...' + moiAccountId.slice(-4);
+    const trustClawId = truncateMoiId(moiAccountId);
     const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
     await this.sendReply(
       channel,
@@ -251,7 +263,7 @@ export class ReplyService {
     replyToMessageId?: string
   ): Promise<void> {
     const message =
-      `🔍 Found an active session\n\n` +
+      `*🔍 Found an active session*\n\n` +
       `Looks like you've already approved access for this.\n\n` +
       `Session ID: ${sessionId}\n\n` +
       `I can ask questions using these permissions:\n` +
