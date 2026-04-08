@@ -4,78 +4,65 @@ import { createLogger } from '../logger/index.js';
 
 const logger = createLogger('request-classifier');
 
-/**
- * Keywords that indicate food ordering intent
- */
-const FOOD_ORDERING_KEYWORDS = [
-  'order',
-  'food',
-  'eat',
-  'dinner',
-  'lunch',
-  'breakfast',
-  'hungry',
-  'pizza',
-  'burger',
-  'restaurant',
-  'delivery',
-  'meal',
-  'dish',
-  'cuisine',
-  'takeout',
-  'takeaway',
-  'snack',
-  'drink',
-  'beverage',
-];
-
-/**
- * Scopes required for food ordering
- */
 const FOOD_ORDERING_SCOPES = ['preferences.food.read', 'health.read', 'profile.address.read', 'finance.payment.read'];
-
-/**
- * Categories required for food ordering
- */
 const FOOD_ORDERING_CATEGORIES = [PermissionCategory.FOOD, PermissionCategory.HEALTH, PermissionCategory.ADDRESS, PermissionCategory.PAYMENT];
 
-/**
- * Request Classifier
- *
- * Deterministic classifier for v1.
- * Uses keyword matching to identify intent.
- *
- * Future versions may use LLM-based classification.
- */
+// Keyword fallback — used when no LLM API key is configured.
+const FOOD_ORDERING_KEYWORDS = [
+  'order', 'get me', 'bring me', 'send me', 'deliver', 'want to eat', 'want some',
+  'craving', 'starving', 'hungry', 'grab some', 'have some',
+  'food', 'eat', 'meal', 'dish', 'dinner', 'lunch', 'breakfast', 'snack', 'brunch',
+  'restaurant', 'delivery', 'takeout', 'takeaway', 'cuisine',
+  'drink', 'beverage', 'juice', 'coffee', 'tea',
+  'pizza', 'burger', 'biryani', 'biriyani', 'noodles', 'pasta', 'sushi', 'sandwich',
+  'wrap', 'salad', 'soup', 'curry', 'rice', 'roti', 'dosa', 'idli', 'tacos',
+  'steak', 'chicken', 'mutton', 'prawn', 'seafood', 'paneer', 'tofu',
+  'calories', 'protein', 'carbs', 'keto', 'vegan', 'vegetarian',
+];
+
+const CLASSIFIER_SYSTEM_PROMPT =
+  `You are an intent classifier for a food ordering assistant. ` +
+  `Classify the user message as "food_ordering" if they want to order food, get food delivered, find a restaurant, or ask about food/dishes/nutrition. ` +
+  `Otherwise classify as "unknown". ` +
+  `Return ONLY valid JSON: {"intent":"food_ordering"} or {"intent":"unknown"}`;
+
+export interface RequestClassifierConfig {
+  /** Anthropic API key — enables LLM classification. Falls back to keyword matching if omitted. */
+  apiKey?: string;
+  /** Claude model to use (default: claude-haiku-4-5-20251001 — fast and cheap for classification) */
+  model?: string;
+}
+
 export class RequestClassifier {
-  /**
-   * Classify a user message
-   *
-   * @param message - The user's message text
-   * @returns Classification result with intent, categories, and scopes
-   */
-  classify(message: string): ClassificationResult {
-    logger.debug('Classifying message', { messageLength: message.length });
+  private readonly apiKey: string | undefined;
+  private readonly model: string;
 
-    const normalizedMessage = message.toLowerCase().trim();
+  constructor(config: RequestClassifierConfig = {}) {
+    this.apiKey = config.apiKey ?? undefined;
+    this.model = config.model ?? 'claude-haiku-4-5-20251001';
+  }
 
-    // Check for food ordering intent
-    if (this.isFoodOrderingIntent(normalizedMessage)) {
+  async classify(message: string): Promise<ClassificationResult> {
+    logger.debug('Classifying message', { messageLength: message.length, llm: !!this.apiKey });
+
+    const isFoodOrder = this.apiKey
+      ? await this.classifyWithLLM(message)
+      : this.classifyWithKeywords(message);
+
+    if (isFoodOrder) {
       logger.info('Classified as food_ordering intent', {
         categories: FOOD_ORDERING_CATEGORIES,
         scopes: FOOD_ORDERING_SCOPES,
       });
-
       return {
         intent: IntentType.FOOD_ORDERING,
         requiredCategories: [...FOOD_ORDERING_CATEGORIES],
         requiredScopes: [...FOOD_ORDERING_SCOPES],
-        confidence: this.calculateConfidence(normalizedMessage, FOOD_ORDERING_KEYWORDS),
+        confidence: 1,
       };
     }
 
-    // Default to unknown intent
-    logger.debug('Could not classify intent, returning unknown');
+    logger.debug('Classified as unknown intent');
     return {
       intent: IntentType.UNKNOWN,
       requiredCategories: [],
@@ -84,41 +71,48 @@ export class RequestClassifier {
     };
   }
 
-  /**
-   * Check if message indicates food ordering intent
-   * Uses word boundary matching to avoid false positives
-   */
-  private isFoodOrderingIntent(message: string): boolean {
-    const matchedKeywords = this.findMatchedKeywords(message, FOOD_ORDERING_KEYWORDS);
-    return matchedKeywords.length > 0;
+  private async classifyWithLLM(message: string): Promise<boolean> {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': this.apiKey!,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          max_tokens: 32,
+          system: CLASSIFIER_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: message }],
+        }),
+      });
+
+      if (!res.ok) {
+        logger.warn('LLM classifier API error — falling back to keywords', { status: res.status });
+        return this.classifyWithKeywords(message);
+      }
+
+      const data = await res.json() as { content: Array<{ type: string; text: string }> };
+      const text = data.content.find(c => c.type === 'text')?.text ?? '';
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const parsed = JSON.parse(cleaned) as { intent: string };
+      return parsed.intent === 'food_ordering';
+    } catch (err) {
+      logger.warn('LLM classifier failed — falling back to keywords', { error: (err as Error).message });
+      return this.classifyWithKeywords(message);
+    }
   }
 
-  /**
-   * Find keywords that match as whole words in the message
-   */
-  private findMatchedKeywords(message: string, keywords: string[]): string[] {
-    return keywords.filter((keyword) => {
-      // Use word boundary regex for accurate matching
-      const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-      return regex.test(message);
+  private classifyWithKeywords(message: string): boolean {
+    const normalized = message.toLowerCase().trim();
+    return FOOD_ORDERING_KEYWORDS.some(keyword => {
+      if (keyword.includes(' ')) return normalized.includes(keyword);
+      return new RegExp(`\\b${keyword}\\b`, 'i').test(normalized);
     });
-  }
-
-  /**
-   * Calculate confidence based on keyword matches
-   */
-  private calculateConfidence(message: string, keywords: string[]): number {
-    const matchedKeywords = this.findMatchedKeywords(message, keywords);
-    const matchRatio = matchedKeywords.length / keywords.length;
-
-    // Scale to 0.5-1.0 range for matched intents
-    return 0.5 + matchRatio * 0.5;
   }
 }
 
-/**
- * Factory function to create a RequestClassifier
- */
-export function createRequestClassifier(): RequestClassifier {
-  return new RequestClassifier();
+export function createRequestClassifier(config: RequestClassifierConfig = {}): RequestClassifier {
+  return new RequestClassifier(config);
 }

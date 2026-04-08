@@ -142,7 +142,7 @@ export class WorkflowHandler {
     }
 
     // Step 5: Classify the request
-    const classification = this.requestClassifier.classify(message.text);
+    const classification = await this.requestClassifier.classify(message.text);
 
     logger.info('Request classified', {
       messageId: message.messageId,

@@ -85,6 +85,12 @@ export interface SessionOrchestrationOptions {
 
   /** Default key ID for signing */
   defaultKeyId?: number;
+
+  /** Anthropic API key for LLM-based request classification (falls back to keyword matching if omitted) */
+  classifierApiKey?: string;
+
+  /** Claude model for request classification (default: claude-haiku-4-5-20251001) */
+  classifierModel?: string;
 }
 
 /**
@@ -160,7 +166,10 @@ export class ParticipantOrchestratorPlugin {
       });
 
       // Initialize request classifier
-      this.requestClassifier = createRequestClassifier();
+      this.requestClassifier = createRequestClassifier({
+        ...(sessionOpts.classifierApiKey ? { apiKey: sessionOpts.classifierApiKey } : {}),
+        ...(sessionOpts.classifierModel ? { model: sessionOpts.classifierModel } : {}),
+      });
 
       // Initialize Intelligence client (default: mock)
       this.intelligenceClient =
