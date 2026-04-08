@@ -442,5 +442,15 @@ export {
   RESUME_COMMAND,
 } from './services/resume-handler.js';
 
+// Restaurant selector
+export {
+  RestaurantSelector,
+  createRestaurantSelector,
+  type RestaurantSelectorConfig,
+  type SelectedRestaurant,
+  type DishOption,
+  type RequestClassification,
+} from './services/restaurant-selector.js';
+
 // Default export for convenience
 export default createPlugin;

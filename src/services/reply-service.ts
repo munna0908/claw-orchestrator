@@ -57,17 +57,6 @@ export const ReplyMessages = {
 
 } as const;
 
-/**
- * Truncate a MOI account ID to show only significant hex digits,
- * skipping leading/trailing zeros: e.g. 0x1a2b...3c4d
- */
-function truncateMoiId(moiAccountId: string): string {
-  const hex = moiAccountId.startsWith('0x') ? moiAccountId.slice(2) : moiAccountId;
-  const firstNonZero = hex.search(/[^0]/);
-  const lastNonZero = hex.length - 1 - [...hex].reverse().join('').search(/[^0]/);
-  const significant = firstNonZero === -1 ? '0000' : hex.slice(firstNonZero, lastNonZero + 1);
-  return `0x${significant.slice(0, 4)}...${significant.slice(-4)}`;
-}
 
 /**
  * ReplyService handles sending replies back to users
@@ -198,8 +187,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const trustClawId = truncateMoiId(moiAccountId);
-    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
+    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${moiAccountId}`;
     await this.sendReply(
       channel,
       channelMeta,
@@ -241,8 +229,7 @@ export class ReplyService {
     moiAccountId: string,
     replyToMessageId?: string
   ): Promise<void> {
-    const trustClawId = truncateMoiId(moiAccountId);
-    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${trustClawId}`;
+    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: \`${moiAccountId}\``;
     await this.sendReply(
       channel,
       channelMeta,
@@ -271,13 +258,11 @@ export class ReplyService {
       `• 🏥 Health Profile\n` +
       `• 📍 Delivery Address\n` +
       `• 💳 Payment\n\n` +
-      `━━━━━━━━━━━━━━━\n\n` +
       `No need to ask you again — I'll reuse this session.\n\n` +
       `Still:\n` +
       `• scoped to these permissions\n` +
       `• time-limited\n` +
       `• fully revocable\n\n` +
-      `━━━━━━━━━━━━━━━\n\n` +
       `Continuing with your request 🚀`;
     await this.sendReply(
       channel,
