@@ -43,7 +43,11 @@ export interface RequestClassification {
 }
 
 export interface RestaurantSelectorConfig {
-  /** Google AI Studio key */
+  /** Anthropic API key (primary LLM) */
+  claudeApiKey: string;
+  /** Claude model — defaults to claude-sonnet-4-6 */
+  claudeModel?: string;
+  /** Google AI Studio key (fallback LLM) */
   geminiApiKey: string;
   /** Gemini model — defaults to gemini-2.0-flash */
   geminiModel?: string;
@@ -53,10 +57,15 @@ export interface RestaurantSelectorConfig {
   pinataGatewayKey?: string;
 }
 
-// ── Gemini API types ───────────────────────────────────────────────────────────
+// ── LLM API types ─────────────────────────────────────────────────────────────
 
 interface GeminiResponse {
   candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
+  error?: { message: string };
+}
+
+interface ClaudeResponse {
+  content: Array<{ type: string; text: string }>;
   error?: { message: string };
 }
 
@@ -122,7 +131,7 @@ export class RestaurantSelector {
       `{"type":"generic or specific","mealTime":"breakfast or lunch or dinner or snack or null","cuisineHint":"e.g. Indian or null","dishHint":"e.g. biryani or null","constraint":"e.g. under 200 kcal or null"}`;
 
     try {
-      const raw = await this.callGemini(prompt);
+      const raw = await this.callLLM(prompt);
       const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
       const parsed = JSON.parse(cleaned) as RequestClassification;
 
@@ -156,7 +165,7 @@ export class RestaurantSelector {
       `{"cuisines":["..."],"mealTypes":["..."]}`;
 
     try {
-      const raw = await this.callGemini(prompt);
+      const raw = await this.callLLM(prompt);
       const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
       const parsed = JSON.parse(cleaned) as { cuisines: string[]; mealTypes: string[] };
       return {
@@ -182,7 +191,7 @@ export class RestaurantSelector {
       `User preference: "${preference}"\n\n` +
       `Select the single best matching restaurant and return its full menu as JSON.`;
 
-    const raw = await this.callGemini(userPrompt, RESTAURANT_SELECTION_PROMPT);
+    const raw = await this.callLLM(userPrompt, RESTAURANT_SELECTION_PROMPT);
     const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
     const parsed = JSON.parse(cleaned) as SelectedRestaurant;
@@ -217,7 +226,7 @@ export class RestaurantSelector {
       `Return ONLY valid JSON. No markdown. No explanation.`;
 
     try {
-      const raw = await this.callGemini(prompt);
+      const raw = await this.callLLM(prompt);
       const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
       const parsed = JSON.parse(cleaned) as { found: boolean } & SelectedRestaurant;
 
@@ -242,6 +251,53 @@ export class RestaurantSelector {
     if (!this.cachedData) {
       throw new Error('RestaurantSelector not initialized — call initialize() first');
     }
+  }
+
+  /** Routes to Claude→Gemini fallback when claudeApiKey is set, otherwise Gemini only. */
+  private async callLLM(userPrompt: string, systemPrompt?: string): Promise<string> {
+    if (!this.config.claudeApiKey) {
+      return this.callGemini(userPrompt, systemPrompt);
+    }
+    try {
+      const result = await this.callClaude(userPrompt, systemPrompt);
+      console.log('[restaurant-selector] LLM: Claude responded OK');
+      return result;
+    } catch (err) {
+      console.warn('[restaurant-selector] Claude failed, falling back to Gemini:', (err as Error).message);
+      return this.callGemini(userPrompt, systemPrompt);
+    }
+  }
+
+  private async callClaude(userPrompt: string, systemPrompt?: string): Promise<string> {
+    const model = this.config.claudeModel ?? 'claude-sonnet-4-6';
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: userPrompt }],
+    };
+    if (systemPrompt) {
+      body.system = systemPrompt;
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.claudeApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Claude API error (${res.status}): ${await res.text()}`);
+    }
+
+    const data = await res.json() as ClaudeResponse;
+    if (data.error) throw new Error(`Claude error: ${data.error.message}`);
+    const text = data.content.find(c => c.type === 'text')?.text;
+    if (!text) throw new Error('Claude returned no text content');
+    return text;
   }
 
   private async callGemini(userPrompt: string, systemPrompt?: string): Promise<string> {
