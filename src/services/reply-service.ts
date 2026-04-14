@@ -382,7 +382,7 @@ export class ReplyService {
       FOOD: 'food preferences',
       HEALTH: 'health information',
       ADDRESS: 'delivery address',
-      PAYMENT: 'payment details',
+      SCHEDULE: 'schedule',
     };
     const categoryList = missingCategories
       .map((c) => `• ${friendlyNames[c] ?? c.toLowerCase()}`)

@@ -33,7 +33,7 @@ export const PermissionCategory = {
   FOOD: 'FOOD',
   HEALTH: 'HEALTH',
   ADDRESS: 'ADDRESS',
-  PAYMENT: 'PAYMENT',
+  SCHEDULE: 'SCHEDULE',
 } as const;
 
 export type PermissionCategory = (typeof PermissionCategory)[keyof typeof PermissionCategory];

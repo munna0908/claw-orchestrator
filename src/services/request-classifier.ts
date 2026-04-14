@@ -4,8 +4,8 @@ import { createLogger } from '../logger/index.js';
 
 const logger = createLogger('request-classifier');
 
-const FOOD_ORDERING_SCOPES = ['preferences.food.read', 'health.read', 'profile.address.read', 'finance.payment.read'];
-const FOOD_ORDERING_CATEGORIES = [PermissionCategory.FOOD, PermissionCategory.HEALTH, PermissionCategory.ADDRESS, PermissionCategory.PAYMENT];
+const FOOD_ORDERING_SCOPES = ['preferences.food.read', 'health.read', 'profile.address.read', 'schedule.read'];
+const FOOD_ORDERING_CATEGORIES = [PermissionCategory.FOOD, PermissionCategory.HEALTH, PermissionCategory.ADDRESS, PermissionCategory.SCHEDULE];
 
 // Keyword fallback — used when no LLM API key is configured.
 const FOOD_ORDERING_KEYWORDS = [
@@ -21,9 +21,10 @@ const FOOD_ORDERING_KEYWORDS = [
 ];
 
 const CLASSIFIER_SYSTEM_PROMPT =
-  `You are an intent classifier for a food ordering assistant. ` +
-  `Classify the user message as "food_ordering" if they want to order food, get food delivered, find a restaurant, or ask about food/dishes/nutrition. ` +
-  `Otherwise classify as "unknown". ` +
+  `You are an intent classifier for a personal assistant. ` +
+  `Classify the user message into one of these intents:\n` +
+  `- "food_ordering": wants to order food, get food delivered, find a restaurant, or asks about food/dishes/nutrition\n` +
+  `- "unknown": anything else\n` +
   `Return ONLY valid JSON: {"intent":"food_ordering"} or {"intent":"unknown"}`;
 
 export interface RequestClassifierConfig {
@@ -45,15 +46,12 @@ export class RequestClassifier {
   async classify(message: string): Promise<ClassificationResult> {
     logger.debug('Classifying message', { messageLength: message.length, llm: !!this.apiKey });
 
-    const isFoodOrder = this.apiKey
+    const intent = this.apiKey
       ? await this.classifyWithLLM(message)
       : this.classifyWithKeywords(message);
 
-    if (isFoodOrder) {
-      logger.info('Classified as food_ordering intent', {
-        categories: FOOD_ORDERING_CATEGORIES,
-        scopes: FOOD_ORDERING_SCOPES,
-      });
+    if (intent === 'food_ordering') {
+      logger.info('Classified as food_ordering intent');
       return {
         intent: IntentType.FOOD_ORDERING,
         requiredCategories: [...FOOD_ORDERING_CATEGORIES],
@@ -71,7 +69,7 @@ export class RequestClassifier {
     };
   }
 
-  private async classifyWithLLM(message: string): Promise<boolean> {
+  private async classifyWithLLM(message: string): Promise<string> {
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -97,19 +95,20 @@ export class RequestClassifier {
       const text = data.content.find(c => c.type === 'text')?.text ?? '';
       const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
       const parsed = JSON.parse(cleaned) as { intent: string };
-      return parsed.intent === 'food_ordering';
+      return parsed.intent;
     } catch (err) {
       logger.warn('LLM classifier failed — falling back to keywords', { error: (err as Error).message });
       return this.classifyWithKeywords(message);
     }
   }
 
-  private classifyWithKeywords(message: string): boolean {
+  private classifyWithKeywords(message: string): string {
     const normalized = message.toLowerCase().trim();
-    return FOOD_ORDERING_KEYWORDS.some(keyword => {
-      if (keyword.includes(' ')) return normalized.includes(keyword);
-      return new RegExp(`\\b${keyword}\\b`, 'i').test(normalized);
-    });
+    const matchKeyword = (kw: string) =>
+      kw.includes(' ') ? normalized.includes(kw) : new RegExp(`\\b${kw}\\b`, 'i').test(normalized);
+
+    if (FOOD_ORDERING_KEYWORDS.some(matchKeyword)) return 'food_ordering';
+    return 'unknown';
   }
 }
 
