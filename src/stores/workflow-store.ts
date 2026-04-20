@@ -68,6 +68,11 @@ export interface WorkflowStore {
   delete(workflowId: string): Promise<boolean>;
 
   /**
+   * Delete all workflows for a participant. Returns the number deleted.
+   */
+  clearByParticipant(participantId: string): Promise<number>;
+
+  /**
    * Get count of workflows
    */
   getCount(): Promise<number>;
@@ -216,6 +221,20 @@ export class InMemoryWorkflowStore implements WorkflowStore {
     }
 
     return existed;
+  }
+
+  async clearByParticipant(participantId: string): Promise<number> {
+    let count = 0;
+    for (const [workflowId, record] of this.records) {
+      if (record.participantId === participantId) {
+        this.records.delete(workflowId);
+        count++;
+      }
+    }
+    if (count > 0) {
+      logger.info('Cleared workflows for participant', { participantId, count });
+    }
+    return count;
   }
 
   async getCount(): Promise<number> {

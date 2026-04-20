@@ -26,6 +26,7 @@ import type {
   SubmitWriteRequest,
   SubmitWriteResponse,
 } from './types/index.js';
+import { ChannelType } from './types/channel.js';
 import type { ParticipantMappingStore } from './services/participant-mapping-store.js';
 import type { ReplySender } from './services/reply-service.js';
 import type { RegistrationVerifier } from './services/registration-verifier.js';
@@ -314,6 +315,23 @@ export class ParticipantOrchestratorPlugin {
       throw new Error('Session orchestration is not enabled');
     }
     return this.intelligenceClient.getWriteStatus(txHash);
+  }
+
+  /**
+   * Clear all state for a user — call this on /start to reset them to a fresh new user.
+   *
+   * Clears (in order):
+   * 1. Workflow store — all workflows keyed by moiAccountId
+   * 2. Session store — all sessions keyed by moiAccountId
+   * 3. Participant mapping — the channel:externalUserId → moiAccountId entry
+   */
+  async clearUserState(channel: ChannelType, externalUserId: string, moiAccountId?: string): Promise<void> {
+    if (moiAccountId) {
+      await this.workflowStore?.clearByParticipant(moiAccountId);
+      await this.sessionStore?.clearSessions(moiAccountId);
+    }
+    await this.store.delete({ channel, externalUserId });
+    pluginLogger.info('Cleared user state', { channel, externalUserId, moiAccountId });
   }
 
   /**
