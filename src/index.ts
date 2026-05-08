@@ -53,6 +53,7 @@ import {
 } from './services/intelligence-client.js';
 import { createSessionOrchestrator, SessionOrchestrator } from './services/session-orchestrator.js';
 import { createResumeHandler, ResumeHandler } from './services/resume-handler.js';
+import { createChitchatResponder, ChitchatResponder } from './services/chitchat-responder.js';
 
 const pluginLogger = createLogger('plugin');
 
@@ -87,11 +88,17 @@ export interface SessionOrchestrationOptions {
   /** Default key ID for signing */
   defaultKeyId?: number;
 
-  /** Anthropic API key for LLM-based request classification (falls back to keyword matching if omitted) */
-  classifierApiKey?: string;
+  /** Anthropic/Claude API key — used for classification and chitchat (falls back to Gemini, then keywords) */
+  claudeApiKey?: string;
 
-  /** Claude model for request classification (default: claude-haiku-4-5-20251001) */
-  classifierModel?: string;
+  /** Claude model (default: claude-haiku-4-5-20251001) */
+  claudeModel?: string;
+
+  /** Gemini API key — used for classification and chitchat (fallback when no Claude key, or as primary) */
+  geminiApiKey?: string;
+
+  /** Gemini model (default: gemini-2.0-flash) */
+  geminiModel?: string;
 }
 
 /**
@@ -131,6 +138,7 @@ export class ParticipantOrchestratorPlugin {
 
   // Session orchestration components (optional)
   private readonly requestClassifier?: RequestClassifier;
+  private readonly chitchatResponder?: ChitchatResponder;
   private readonly intelligenceClient?: IntelligenceClient;
   private readonly sessionStore?: SessionStore;
   private readonly workflowStore?: WorkflowStore;
@@ -168,8 +176,18 @@ export class ParticipantOrchestratorPlugin {
 
       // Initialize request classifier
       this.requestClassifier = createRequestClassifier({
-        ...(sessionOpts.classifierApiKey ? { apiKey: sessionOpts.classifierApiKey } : {}),
-        ...(sessionOpts.classifierModel ? { model: sessionOpts.classifierModel } : {}),
+        ...(sessionOpts.claudeApiKey ? { apiKey: sessionOpts.claudeApiKey } : {}),
+        ...(sessionOpts.claudeModel ? { model: sessionOpts.claudeModel } : {}),
+        ...(sessionOpts.geminiApiKey ? { geminiApiKey: sessionOpts.geminiApiKey } : {}),
+        ...(sessionOpts.geminiModel ? { geminiModel: sessionOpts.geminiModel } : {}),
+      });
+
+      // Initialize chitchat responder
+      this.chitchatResponder = createChitchatResponder({
+        ...(sessionOpts.claudeApiKey ? { apiKey: sessionOpts.claudeApiKey } : {}),
+        ...(sessionOpts.claudeModel ? { model: sessionOpts.claudeModel } : {}),
+        ...(sessionOpts.geminiApiKey ? { geminiApiKey: sessionOpts.geminiApiKey } : {}),
+        ...(sessionOpts.geminiModel ? { geminiModel: sessionOpts.geminiModel } : {}),
       });
 
       // Initialize Intelligence client (default: mock)
@@ -221,7 +239,8 @@ export class ParticipantOrchestratorPlugin {
       this.registrationService,
       this.requestClassifier,
       this.sessionOrchestrator,
-      this.resumeHandler
+      this.resumeHandler,
+      this.chitchatResponder
     );
 
     // Initialize router
@@ -468,6 +487,13 @@ export {
   parseResumeCommand,
   RESUME_COMMAND,
 } from './services/resume-handler.js';
+
+// Chitchat responder
+export {
+  ChitchatResponder,
+  createChitchatResponder,
+  type ChitchatResponderConfig,
+} from './services/chitchat-responder.js';
 
 // Restaurant selector
 export {

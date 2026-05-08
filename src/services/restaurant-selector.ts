@@ -14,6 +14,7 @@
 
 export interface DishOption {
   name: string;
+  price?: number;
   description?: string;
   calories?: number;
   protein?: string;
@@ -27,6 +28,7 @@ export interface SelectedRestaurant {
   cuisine: string;
   delivery_mins: number;
   menu_items: DishOption[];
+  walletAddress?: string;
 }
 
 /** Structured output from classifying a user's food order message. */
@@ -104,10 +106,11 @@ Output rules (STRICT):
   - "name" (string) — restaurant name
   - "cuisine" (string) — cuisine type
   - "delivery_mins" (number) — plain integer
-  - "menu_items" (array) — each item: "name", "description", "calories" (number), "protein", "carbs", "fat", "allergens"
+  - "menu_items" (array) — each item: "name", "price" (number, dollars), "description", "calories" (number), "protein", "carbs", "fat", "allergens"
+  - "walletAddress" (string) — restaurant wallet address from directory
 
 Example:
-{"name":"Spice Garden","cuisine":"Indian","delivery_mins":25,"menu_items":[{"name":"Butter Chicken","description":"Creamy tomato sauce","calories":420,"protein":"32g","carbs":"18g","fat":"22g","allergens":"Dairy"}]}`;
+{"name":"Spice Garden","cuisine":"Indian","delivery_mins":25,"walletAddress":"0x000...","menu_items":[{"name":"Butter Chicken","price":17,"description":"Creamy tomato sauce","calories":420,"protein":"32g","carbs":"18g","fat":"22g","allergens":"Dairy"}]}`;
 
 // ── RestaurantSelector class ───────────────────────────────────────────────────
 
@@ -355,6 +358,7 @@ export class RestaurantSelector {
 
       let cuisine = '';
       let delivery_mins = 30;
+      let walletAddress: string | undefined;
 
       for (const line of lines) {
         const cuisineMatch = line.match(/\*\*Cuisine:\*\*\s*(.+)/);
@@ -362,6 +366,9 @@ export class RestaurantSelector {
 
         const deliveryMatch = line.match(/\*\*Delivery Time:\*\*\s*(\d+)/);
         if (deliveryMatch?.[1]) delivery_mins = parseInt(deliveryMatch[1], 10);
+
+        const walletMatch = line.match(/\*\*Wallet:\*\*\s*(0x[0-9a-fA-F]+)/);
+        if (walletMatch?.[1]) walletAddress = walletMatch[1].trim();
       }
 
       // Parse the markdown table — skip header row and separator row.
@@ -377,9 +384,10 @@ export class RestaurantSelector {
         const cols = line.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1);
         if (cols.length < 7) continue;
 
-        const [itemName, , description, calStr, protein, carbs, fat, allergens] = cols;
+        const [itemName, priceStr, description, calStr, protein, carbs, fat, allergens] = cols;
         if (!itemName || !description) continue;
         const caloriesMatch = calStr?.match(/\d+/);
+        const priceNum = parseFloat((priceStr ?? '').replace(/[^0-9.]/g, ''));
 
         const entry: DishOption = {
           name: itemName,
@@ -389,12 +397,15 @@ export class RestaurantSelector {
           fat: fat ?? '',
           allergens: allergens ?? '',
         };
+        if (!isNaN(priceNum) && priceNum > 0) entry.price = priceNum;
         if (caloriesMatch) entry.calories = parseInt(caloriesMatch[0], 10);
         menu_items.push(entry);
       }
 
       if (name && menu_items.length > 0) {
-        restaurants.push({ name, cuisine, delivery_mins, menu_items });
+        const r: SelectedRestaurant = { name, cuisine, delivery_mins, menu_items };
+        if (walletAddress) r.walletAddress = walletAddress;
+        restaurants.push(r);
       }
     }
 

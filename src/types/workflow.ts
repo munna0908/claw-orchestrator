@@ -21,6 +21,7 @@ export type WorkflowStatus = (typeof WorkflowStatus)[keyof typeof WorkflowStatus
  */
 export const IntentType = {
   FOOD_ORDERING: 'food_ordering',
+  CHITCHAT: 'chitchat',
   UNKNOWN: 'unknown',
 } as const;
 

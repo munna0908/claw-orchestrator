@@ -5,6 +5,7 @@ import type { RegistrationService } from '../services/registration-service.js';
 import type { RequestClassifier } from '../services/request-classifier.js';
 import type { SessionOrchestrator } from '../services/session-orchestrator.js';
 import type { ResumeHandler } from '../services/resume-handler.js';
+import type { ChitchatResponder } from '../services/chitchat-responder.js';
 import { isResumeCommand, parseResumeCommand } from '../services/resume-handler.js';
 import { IntentType } from '../types/workflow.js';
 import { createLogger } from '../logger/index.js';
@@ -27,6 +28,7 @@ export type ExtendedMessageAction =
   | 'session_failed'
   | 'category_cids_missing'
   | 'unknown_intent'
+  | 'chitchat'
   | 'error';
 
 export interface ExtendedMessageProcessingResult extends Omit<MessageProcessingResult, 'action'> {
@@ -40,6 +42,8 @@ export interface ExtendedMessageProcessingResult extends Omit<MessageProcessingR
   requestId?: string | undefined;
   /** Categories missing CIDs in the contract (present when action === 'category_cids_missing') */
   missingCategories?: string[] | undefined;
+  /** Generated reply text (present when action === 'chitchat') */
+  reply?: string | undefined;
 }
 
 /**
@@ -63,7 +67,8 @@ export class WorkflowHandler {
     private readonly registrationService?: RegistrationService,
     private readonly requestClassifier?: RequestClassifier,
     private readonly sessionOrchestrator?: SessionOrchestrator,
-    private readonly resumeHandler?: ResumeHandler
+    private readonly resumeHandler?: ResumeHandler,
+    private readonly chitchatResponder?: ChitchatResponder
   ) {}
 
   /**
@@ -87,173 +92,194 @@ export class WorkflowHandler {
       return this.handleResumeCommand(message);
     }
 
-    // Step 3: Check registration status for normal messages
+    // Step 3: Classify early — chitchat and unknown bypass registration entirely
+    if (this.requestClassifier) {
+      const classification = await this.requestClassifier.classify(message.text);
+
+      logger.info('Request classified', {
+        messageId: message.messageId,
+        intent: classification.intent,
+        confidence: classification.confidence,
+      });
+
+      if (classification.intent === IntentType.CHITCHAT) {
+        const reply = (message.suppressChitchatResponse || !this.chitchatResponder)
+          ? undefined
+          : await this.chitchatResponder.respond(message.text);
+        return {
+          success: true,
+          messageId: message.messageId,
+          action: 'chitchat',
+          reply,
+        };
+      }
+
+      if (classification.intent === IntentType.UNKNOWN) {
+        return {
+          success: true,
+          messageId: message.messageId,
+          action: 'unknown_intent',
+        };
+      }
+
+      // food_ordering — fall through to registration check
+
+      // Step 4: Check registration
+      const registrationResult = await this.registrationChecker.check({
+        channel: message.channel,
+        externalUserId: message.externalUserId,
+      });
+
+      if (!registrationResult.isRegistered) {
+        logger.info('Unregistered user, sending registration prompt', {
+          messageId: message.messageId,
+          channel: message.channel,
+          externalUserId: message.externalUserId,
+        });
+        await this.replyService.sendRegistrationRequired(
+          message.channel,
+          message.channelMeta,
+          message.externalUserId,
+          message.messageId
+        );
+        return {
+          success: true,
+          messageId: message.messageId,
+          action: 'registration_required',
+        };
+      }
+
+      logger.info('Registered user detected, starting workflow', {
+        messageId: message.messageId,
+        moiAccountId: registrationResult.moiAccountId,
+      });
+
+      if (!this.sessionOrchestrator) {
+        logger.debug('Session orchestration not configured, using simple workflow continue');
+        await this.replyService.sendWorkflowContinue(
+          message.channel,
+          message.channelMeta,
+          message.externalUserId,
+          message.messageId
+        );
+        return {
+          success: true,
+          messageId: message.messageId,
+          action: 'workflow_continue',
+          moiAccountId: registrationResult.moiAccountId,
+        };
+      }
+
+      // Step 5: Orchestrate session
+      const orchestrationResult = await this.sessionOrchestrator.orchestrate(
+        registrationResult.moiAccountId!,
+        message.channel,
+        message.externalUserId,
+        message.text,
+        classification
+      );
+
+      logger.info('Session orchestration complete', {
+        messageId: message.messageId,
+        workflowId: orchestrationResult.workflowId,
+        action: orchestrationResult.action,
+        sessionId: orchestrationResult.sessionId,
+      });
+
+      switch (orchestrationResult.action) {
+        case 'session_found':
+          await this.replyService.sendSessionActive(
+            message.channel,
+            message.channelMeta,
+            message.externalUserId,
+            orchestrationResult.sessionId ?? '',
+            message.messageId
+          );
+          return {
+            success: true,
+            messageId: message.messageId,
+            action: 'session_found',
+            moiAccountId: registrationResult.moiAccountId,
+            workflowId: orchestrationResult.workflowId,
+            sessionId: orchestrationResult.sessionId,
+          };
+
+        case 'session_creation_required':
+          return {
+            success: true,
+            messageId: message.messageId,
+            action: 'session_creation_required',
+            moiAccountId: registrationResult.moiAccountId,
+            workflowId: orchestrationResult.workflowId,
+            sessionId: orchestrationResult.sessionId,
+            ixObject: orchestrationResult.ixObject,
+            requestId: orchestrationResult.requestId,
+          };
+
+        case 'category_cids_missing':
+          await this.replyService.sendCategoryCidsMissing(
+            message.channel,
+            message.channelMeta,
+            message.externalUserId,
+            orchestrationResult.missingCategories ?? [],
+            message.messageId
+          );
+          return {
+            success: false,
+            messageId: message.messageId,
+            action: 'category_cids_missing',
+            moiAccountId: registrationResult.moiAccountId,
+            workflowId: orchestrationResult.workflowId,
+            missingCategories: orchestrationResult.missingCategories,
+          };
+
+        case 'error':
+        default:
+          await this.replyService.sendInternalError(
+            message.channel,
+            message.channelMeta,
+            message.externalUserId,
+            message.messageId
+          );
+          return {
+            success: false,
+            messageId: message.messageId,
+            action: 'error',
+            error: orchestrationResult.error,
+            moiAccountId: registrationResult.moiAccountId,
+            workflowId: orchestrationResult.workflowId,
+          };
+      }
+    }
+
+    // No classifier configured — simple workflow continue for registered users
     const registrationResult = await this.registrationChecker.check({
       channel: message.channel,
       externalUserId: message.externalUserId,
     });
 
     if (!registrationResult.isRegistered) {
-      // Not registered - send registration required message
-      logger.info('Unregistered user, sending registration prompt', {
-        messageId: message.messageId,
-        channel: message.channel,
-        externalUserId: message.externalUserId,
-      });
-
       await this.replyService.sendRegistrationRequired(
         message.channel,
         message.channelMeta,
         message.externalUserId,
         message.messageId
       );
-
-      return {
-        success: true,
-        messageId: message.messageId,
-        action: 'registration_required',
-      };
+      return { success: true, messageId: message.messageId, action: 'registration_required' };
     }
 
-    // Step 4: Registered user - continue to workflow with session orchestration
-    logger.info('Registered user detected, starting workflow', {
-      messageId: message.messageId,
-      channel: message.channel,
-      externalUserId: message.externalUserId,
-      moiAccountId: registrationResult.moiAccountId,
-    });
-
-    // If session orchestration is not configured, fall back to simple workflow continue
-    if (!this.requestClassifier || !this.sessionOrchestrator) {
-      logger.debug('Session orchestration not configured, using simple workflow continue');
-      await this.replyService.sendWorkflowContinue(
-        message.channel,
-        message.channelMeta,
-        message.externalUserId,
-        message.messageId
-      );
-
-      return {
-        success: true,
-        messageId: message.messageId,
-        action: 'workflow_continue',
-        moiAccountId: registrationResult.moiAccountId,
-      };
-    }
-
-    // Step 5: Classify the request
-    const classification = await this.requestClassifier.classify(message.text);
-
-    logger.info('Request classified', {
-      messageId: message.messageId,
-      intent: classification.intent,
-      requiredCategories: classification.requiredCategories,
-      requiredScopes: classification.requiredScopes,
-      confidence: classification.confidence,
-    });
-
-    // Step 6: Handle unknown intent
-    if (classification.intent === IntentType.UNKNOWN) {
-      logger.info('Unknown intent, cannot proceed with workflow', {
-        messageId: message.messageId,
-      });
-
-      await this.replyService.sendUnknownIntent(
-        message.channel,
-        message.channelMeta,
-        message.externalUserId,
-        message.messageId
-      );
-
-      return {
-        success: true,
-        messageId: message.messageId,
-        action: 'unknown_intent',
-        moiAccountId: registrationResult.moiAccountId,
-      };
-    }
-
-    // Step 7: Orchestrate session
-    const orchestrationResult = await this.sessionOrchestrator.orchestrate(
-      registrationResult.moiAccountId!,
+    await this.replyService.sendWorkflowContinue(
       message.channel,
+      message.channelMeta,
       message.externalUserId,
-      message.text,
-      classification
+      message.messageId
     );
-
-    logger.info('Session orchestration complete', {
+    return {
+      success: true,
       messageId: message.messageId,
-      workflowId: orchestrationResult.workflowId,
-      action: orchestrationResult.action,
-      sessionId: orchestrationResult.sessionId,
-    });
-
-    // Step 8: Send appropriate reply based on orchestration result
-    switch (orchestrationResult.action) {
-      case 'session_found':
-        await this.replyService.sendSessionActive(
-          message.channel,
-          message.channelMeta,
-          message.externalUserId,
-          orchestrationResult.sessionId ?? '',
-          message.messageId
-        );
-        return {
-          success: true,
-          messageId: message.messageId,
-          action: 'session_found',
-          moiAccountId: registrationResult.moiAccountId,
-          workflowId: orchestrationResult.workflowId,
-          sessionId: orchestrationResult.sessionId,
-        };
-
-      case 'session_creation_required':
-        return {
-          success: true,
-          messageId: message.messageId,
-          action: 'session_creation_required',
-          moiAccountId: registrationResult.moiAccountId,
-          workflowId: orchestrationResult.workflowId,
-          sessionId: orchestrationResult.sessionId,
-          ixObject: orchestrationResult.ixObject,
-          requestId: orchestrationResult.requestId,
-        };
-
-      case 'category_cids_missing':
-        await this.replyService.sendCategoryCidsMissing(
-          message.channel,
-          message.channelMeta,
-          message.externalUserId,
-          orchestrationResult.missingCategories ?? [],
-          message.messageId
-        );
-        return {
-          success: false,
-          messageId: message.messageId,
-          action: 'category_cids_missing',
-          moiAccountId: registrationResult.moiAccountId,
-          workflowId: orchestrationResult.workflowId,
-          missingCategories: orchestrationResult.missingCategories,
-        };
-
-      case 'error':
-      default:
-        await this.replyService.sendInternalError(
-          message.channel,
-          message.channelMeta,
-          message.externalUserId,
-          message.messageId
-        );
-        return {
-          success: false,
-          messageId: message.messageId,
-          action: 'error',
-          error: orchestrationResult.error,
-          moiAccountId: registrationResult.moiAccountId,
-          workflowId: orchestrationResult.workflowId,
-        };
-    }
+      action: 'workflow_continue',
+      moiAccountId: registrationResult.moiAccountId,
+    };
   }
 
   /**
@@ -530,7 +556,8 @@ export function createWorkflowHandler(
   registrationService?: RegistrationService,
   requestClassifier?: RequestClassifier,
   sessionOrchestrator?: SessionOrchestrator,
-  resumeHandler?: ResumeHandler
+  resumeHandler?: ResumeHandler,
+  chitchatResponder?: ChitchatResponder
 ): WorkflowHandler {
   return new WorkflowHandler(
     registrationChecker,
@@ -538,6 +565,7 @@ export function createWorkflowHandler(
     registrationService,
     requestClassifier,
     sessionOrchestrator,
-    resumeHandler
+    resumeHandler,
+    chitchatResponder
   );
 }

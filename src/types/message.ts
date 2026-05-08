@@ -24,6 +24,9 @@ export interface InboundMessage {
 
   /** Timestamp when message was received */
   timestamp: Date;
+
+  /** When true, skip the chitchat LLM responder and return reply:undefined (classification still runs) */
+  suppressChitchatResponse?: boolean | undefined;
 }
 
 /**
