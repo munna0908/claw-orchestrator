@@ -184,10 +184,10 @@ export class ReplyService {
     channel: ChannelType,
     channelMeta: ChannelMeta,
     externalUserId: string,
-    moiAccountId: string,
-    replyToMessageId?: string
+    replyToMessageId?: string,
+    agentId?: string
   ): Promise<void> {
-    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: ${moiAccountId}`;
+    const message = `${ReplyMessages.REGISTRATION_SUCCESS}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: 0x${agentId}`;
     await this.sendReply(
       channel,
       channelMeta,
@@ -226,10 +226,10 @@ export class ReplyService {
     channel: ChannelType,
     channelMeta: ChannelMeta,
     externalUserId: string,
-    moiAccountId: string,
-    replyToMessageId?: string
+    replyToMessageId?: string,
+    agentId?: string
   ): Promise<void> {
-    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: \`${moiAccountId}\``;
+    const message = `${ReplyMessages.ALREADY_REGISTERED}\n\n━━━━━━━━━━━━━━━\n\nTrustClaw ID: \`0x${agentId}\``;
     await this.sendReply(
       channel,
       channelMeta,

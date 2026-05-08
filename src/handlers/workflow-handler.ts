@@ -324,8 +324,8 @@ export class WorkflowHandler {
           message.channel,
           message.channelMeta,
           message.externalUserId,
-          result.moiAccountId!,
-          message.messageId
+          message.messageId,
+          this.sessionOrchestrator?.agentId
         );
         return {
           success: true,
@@ -339,8 +339,8 @@ export class WorkflowHandler {
           message.channel,
           message.channelMeta,
           message.externalUserId,
-          result.moiAccountId!,
-          message.messageId
+          message.messageId,
+          this.sessionOrchestrator?.agentId
         );
         return {
           success: true,

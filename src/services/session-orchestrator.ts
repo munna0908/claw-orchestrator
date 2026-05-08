@@ -75,6 +75,10 @@ export class SessionOrchestrator {
     });
   }
 
+  get agentId(): string {
+    return this.config.agentId;
+  }
+
   /**
    * Orchestrate session for a classified request
    *
